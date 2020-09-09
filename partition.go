@@ -5,27 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-
-	corev1 "k8s.io/api/core/v1"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 )
-
-type ConfigMapStream struct {
-	client   client.Client
-	segments []corev1.ConfigMap
-}
-
-func (s *ConfigMapStream) Write(p []byte) (n int, err error) {
-	return
-}
-
-func (s *ConfigMapStream) Read(p []byte) (n int, err error) {
-	return
-}
-
-func (s *ConfigMapStream) Flush() error {
-	return nil
-}
 
 type Partitioner interface {
 	Split(v interface{}, segments io.Writer) error
@@ -63,7 +43,7 @@ func (p *SimplePartitioner) Split(v interface{}, segments io.Writer) error {
 		}
 
 		if err := encoder.Encode(segment); err != nil {
-			return fmt.Errorf("failed to write segment %s to stream: %s", segment, err)
+			return fmt.Errorf("failed to write segment %v to stream: %s", segment, err)
 		}
 
 		// Prep next segment
@@ -76,10 +56,52 @@ func (p *SimplePartitioner) Split(v interface{}, segments io.Writer) error {
 
 func (p *SimplePartitioner) Join(v interface{}, segments io.Reader) error {
 	// TODO(njhale): handle async readers
-	var data bytes.Buffer
+	var (
+		decoder = json.NewDecoder(segments)
+		ordered []*SimpleSegment
+		err     error
+	)
 	for {
-		data.ReadFrom
-		segments.Read(
+		segment := &SimpleSegment{}
+		if err = decoder.Decode(segment); err != nil {
+			break
+		}
+
+		p := segment.Position
+		switch {
+		case p == uint(len(ordered)):
+			// Rely on append to expand capacity in the case of an in-order stream
+			ordered = append(ordered, segment)
+		case p > uint(len(ordered)-1):
+			// Unordered stream, resize to include the partition
+			expanded := make([]*SimpleSegment, segment.Position+1)
+			copy(expanded, ordered)
+			fallthrough
+		default:
+			if ordered[p] != nil {
+				return fmt.Errorf("received duplicate segment at position %d", p)
+			}
+
+			// In-order insert
+			ordered[p] = segment
+		}
+
+	}
+	if err != io.EOF {
+		return fmt.Errorf("failed to read segment from stream: %s", err)
+	}
+
+	// Collect data and decode to the target interface
+	var buf bytes.Buffer
+	for _, segment := range ordered {
+		if _, err := buf.Write(segment.Data); err != nil {
+			return fmt.Errorf("failed to join segments %s", err)
+		}
+	}
+
+	decoder = json.NewDecoder(&buf)
+	if err := decoder.Decode(v); err != nil {
+		return fmt.Errorf("failed to decode joined segments: %s", err)
 	}
 
 	return nil
