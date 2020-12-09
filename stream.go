@@ -50,7 +50,6 @@ func (s *ConfigMapStream) Write(p []byte) (n int, err error) {
 	// Note: consider making these ConfigMaps content-addressable to avoid creating duplicates.
 	cm.SetGenerateName("stream-")
 	s.stamp(cm)
-	fmt.Printf("cm: %v\n", *cm)
 
 	if err = s.Client.Create(context.TODO(), cm); err != nil {
 		return 0, err
@@ -60,10 +59,11 @@ func (s *ConfigMapStream) Write(p []byte) (n int, err error) {
 }
 
 // Read fills p with up to len(p) content of the next ConfigMap in the stream.
-func (s *ConfigMapStream) Read(p []byte) (n int, err error) {
+func (s *ConfigMapStream) Read(p []byte) (int, error) {
 	var elements []corev1.ConfigMap
-	if elements, err = s.cache(context.TODO()); err != nil {
-		return
+	elements, err := s.cache(context.TODO())
+	if err != nil {
+		return 0, err
 	}
 	fmt.Printf("|elements|: %d\n", len(elements))
 	if s.current >= len(elements) {
@@ -71,31 +71,40 @@ func (s *ConfigMapStream) Read(p []byte) (n int, err error) {
 		return 0, io.EOF
 	}
 
-	var (
-		element = s.elements[s.current]
-		data    = element.BinaryData[streamObjKey]
-		reader  = bytes.NewReader(data)
-	)
-	n, err = reader.ReadAt(p, s.offset)
-	s.offset = s.offset + int64(n)
-	if err == io.EOF {
-		err = nil
-		s.offset = 0
-		s.current++
-		if n < len(p) {
-			// TODO(njhale): make this iterative
-			var m int
-			m, err = s.Read(p[n-1:])
-			n = n + m
+	var n int
+	for _, element := range elements[s.current:] {
+		// FIXME(njhale): Something's wrong here
+		fmt.Printf("current: %d\n", s.current)
+		fmt.Printf("s.offset: %d\n", s.offset)
+		var (
+			data   = element.BinaryData[streamObjKey]
+			reader = bytes.NewReader(data)
+			m, err = reader.ReadAt(p[n:], s.offset)
+		)
+		if err != nil && err != io.EOF {
+			return n, err
+		}
+		fmt.Printf("m: %d\n", m)
+
+		s.offset += int64(m)
+		n += m
+		if n >= len(p) {
+			return n, nil
+		}
+
+		if err == io.EOF {
+			fmt.Println("EOF")
+			s.offset = 0
+			s.current++
 		}
 	}
-	fmt.Printf("current, offset: %d, %d\n", s.current, s.offset)
 
-	return
+	return n, io.EOF
 }
 
 func (s *ConfigMapStream) cache(ctx context.Context) ([]corev1.ConfigMap, error) {
 	if len(s.elements) > 0 {
+		// FIXME(njhale): If we cache before all configmaps exists we'll never be able to get all the data.
 		return s.elements, nil
 	}
 

@@ -8,6 +8,7 @@ import (
 )
 
 type Partitioner interface {
+	// TODO(njhale): Consider refactoring as a passthrough Reader/Writer.
 	Split(v interface{}, segments io.Writer) error
 	Join(v interface{}, segments io.Reader) error
 }
@@ -15,6 +16,12 @@ type Partitioner interface {
 type SimpleSegment struct {
 	Position uint   `json:"position"`
 	Data     []byte `json:"data"`
+}
+
+func NewPartitioner(segmentSize int) *SimplePartitioner {
+	return &SimplePartitioner{
+		segmentSize: segmentSize,
+	}
 }
 
 type SimplePartitioner struct {
@@ -26,9 +33,6 @@ func (p *SimplePartitioner) Split(v interface{}, segments io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("failed to encode v: %s", err)
 	}
-	fmt.Printf("data %v\n", data)
-	fmt.Printf("len(data) %d\n", len(data))
-	fmt.Printf("segmentSize: %d\n", p.segmentSize)
 
 	var (
 		segment SimpleSegment

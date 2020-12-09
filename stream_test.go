@@ -37,7 +37,6 @@ func TestConfigMapStreamRoundTrip(t *testing.T) {
 	}
 
 	roundTrip := func(d data) bool {
-		fmt.Printf("len(d): %d\n", len(d))
 		client := fake.NewFakeClientWithScheme(scheme)
 		stream := &ConfigMapStream{
 			Client:    client,
@@ -67,13 +66,19 @@ func TestConfigMapStreamRoundTrip(t *testing.T) {
 			// Read a segment of arbitrary length
 			segment := make([]byte, 200)
 			n, err = stream.Read(segment)
-			out = append(out, segment[:n]...)
-			fmt.Printf("read segment of length %d\n", n)
+			if n > 0 {
+				out = append(out, segment[:n]...)
+			}
+			if err != nil {
+				continue
+			}
 		}
 		if err != io.EOF {
 			t.Errorf("failed to read data: %s", err)
 			return false
 		}
+		fmt.Printf("out: %s\n", out)
+		fmt.Printf("in: %s\n", in)
 		if !bytes.Equal(out, in) {
 			t.Errorf("output %b doesn't match input %b", out, in)
 			return false

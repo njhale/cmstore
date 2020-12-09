@@ -200,7 +200,7 @@ func (s *ConfigMapStore) labelSelector(key string) *metav1.LabelSelector {
 	}
 }
 
-var _ storage.Interface = &ConfigMapStore{}
+// var _ storage.Interface = &ConfigMapStore{}
 
 func (s *ConfigMapStore) Versioner() storage.Versioner {
 	return s.versioner
