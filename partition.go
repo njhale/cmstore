@@ -26,29 +26,35 @@ func (p *SimplePartitioner) Split(v interface{}, segments io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("failed to encode v: %s", err)
 	}
+	fmt.Printf("data %v\n", data)
+	fmt.Printf("len(data) %d\n", len(data))
+	fmt.Printf("segmentSize: %d\n", p.segmentSize)
 
 	var (
 		segment SimpleSegment
 		encoder = json.NewEncoder(segments)
 	)
-	for i, b := range data {
-		if len(segment.Data) < p.segmentSize {
-			segment.Data = append(segment.Data, b)
-
-			// Determine if this is a partial segment
-			if i < len(data)-1 {
-				// Keep building
-				continue
+	for _, b := range data {
+		if len(segment.Data) == p.segmentSize {
+			fmt.Printf("writing segment: %b\n", segment.Data)
+			if err := encoder.Encode(segment); err != nil {
+				return fmt.Errorf("failed to write segment %v to stream: %s", segment, err)
 			}
-		}
 
+			// Prep next segment
+			segment.Position++
+			segment.Data = nil
+		}
+		fmt.Printf("appending fragment: %b\n", b)
+		segment.Data = append(segment.Data, b)
+	}
+
+	// Encode the final segment if there is any data
+	if len(segment.Data) > 0 {
+		fmt.Printf("writing final segment: %b\n", segment.Data)
 		if err := encoder.Encode(segment); err != nil {
 			return fmt.Errorf("failed to write segment %v to stream: %s", segment, err)
 		}
-
-		// Prep next segment
-		segment.Position++
-		segment.Data = nil
 	}
 
 	return nil
@@ -62,10 +68,12 @@ func (p *SimplePartitioner) Join(v interface{}, segments io.Reader) error {
 		err     error
 	)
 	for {
+		fmt.Println("decoding next segment...")
 		segment := &SimpleSegment{}
 		if err = decoder.Decode(segment); err != nil {
 			break
 		}
+		fmt.Printf("decoded segment: %v\n", segment)
 
 		p := segment.Position
 		switch {
