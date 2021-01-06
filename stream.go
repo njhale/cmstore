@@ -74,8 +74,6 @@ func (s *ConfigMapStream) Read(p []byte) (int, error) {
 	var n int
 	for _, element := range elements[s.current:] {
 		// FIXME(njhale): Something's wrong here
-		fmt.Printf("current: %d\n", s.current)
-		fmt.Printf("s.offset: %d\n", s.offset)
 		var (
 			data   = element.BinaryData[streamObjKey]
 			reader = bytes.NewReader(data)

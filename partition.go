@@ -40,7 +40,6 @@ func (p *SimplePartitioner) Split(v interface{}, segments io.Writer) error {
 	)
 	for _, b := range data {
 		if len(segment.Data) == p.segmentSize {
-			fmt.Printf("writing segment: %b\n", segment.Data)
 			if err := encoder.Encode(segment); err != nil {
 				return fmt.Errorf("failed to write segment %v to stream: %s", segment, err)
 			}
@@ -49,13 +48,11 @@ func (p *SimplePartitioner) Split(v interface{}, segments io.Writer) error {
 			segment.Position++
 			segment.Data = nil
 		}
-		fmt.Printf("appending fragment: %b\n", b)
 		segment.Data = append(segment.Data, b)
 	}
 
 	// Encode the final segment if there is any data
 	if len(segment.Data) > 0 {
-		fmt.Printf("writing final segment: %b\n", segment.Data)
 		if err := encoder.Encode(segment); err != nil {
 			return fmt.Errorf("failed to write segment %v to stream: %s", segment, err)
 		}
@@ -84,10 +81,11 @@ func (p *SimplePartitioner) Join(v interface{}, segments io.Reader) error {
 		case p == uint(len(ordered)):
 			// Rely on append to expand capacity in the case of an in-order stream
 			ordered = append(ordered, segment)
-		case p > uint(len(ordered)-1):
+		case p+1 > uint(len(ordered)):
 			// Unordered stream, resize to include the partition
 			expanded := make([]*SimpleSegment, segment.Position+1)
 			copy(expanded, ordered)
+			ordered = expanded
 			fallthrough
 		default:
 			if ordered[p] != nil {
